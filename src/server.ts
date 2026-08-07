@@ -5,6 +5,7 @@ import jwt from '@fastify/jwt';
 import rateLimit from '@fastify/rate-limit';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
+import fs from 'node:fs';
 import path from 'node:path';
 import { ZodError } from 'zod';
 import { config } from './config.js';
@@ -100,10 +101,12 @@ await app.register(catalogRoutes, { prefix: '/api' });
 await app.register(renapoRoutes, { prefix: '/api' });
 await app.register(uploadRoutes, { prefix: '/api' });
 await app.register(emergencyRoutes);
-await app.register(fastifyStatic, {
-  root: frontendDir,
-  prefix: '/',
-  decorateReply: false
-});
+if (fs.existsSync(frontendDir)) {
+  await app.register(fastifyStatic, {
+    root: frontendDir,
+    prefix: '/',
+    decorateReply: false
+  });
+}
 
 await app.listen({ port: config.PORT, host: '0.0.0.0' });
