@@ -33,4 +33,27 @@ export async function uploadRoutes(app: FastifyInstance) {
 
     return { photoPath: beneficiary.photoPath };
   });
+
+  app.post('/beneficiaries/:id/signature', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const { id } = paramsSchema.parse(request.params);
+    const file = await request.file();
+
+    if (!file) return reply.code(400).send({ message: 'Archivo requerido' });
+    if (!allowedMime.has(file.mimetype)) {
+      return reply.code(400).send({ message: 'Solo se aceptan firmas JPG, PNG o WEBP' });
+    }
+
+    const buffer = await file.toBuffer();
+    if (buffer.length > 2 * 1024 * 1024) {
+      return reply.code(400).send({ message: 'La firma no debe superar 2 MB' });
+    }
+
+    const signatureData = `data:${file.mimetype};base64,${buffer.toString('base64')}`;
+    await prisma.beneficiary.update({
+      where: { id },
+      data: { signatureData } as any
+    });
+
+    return { signatureData };
+  });
 }

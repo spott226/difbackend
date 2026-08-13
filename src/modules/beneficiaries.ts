@@ -456,7 +456,7 @@ export async function beneficiaryRoutes(app: FastifyInstance) {
     const validHeaders = importHeaders.every((header) => (headerIndexes.get(header) ?? -1) >= 0);
     if (!validHeaders) {
       return reply.code(400).send({
-        message: 'Faltan columnas requeridas. Use la plantilla de captura o un archivo exportado por SINDIS sin cambiar los encabezados.'
+        message: 'Faltan columnas requeridas. Use la plantilla de captura o un archivo exportado por El Gigante Incluyente sin cambiar los encabezados.'
       });
     }
 

@@ -24,6 +24,7 @@ declare module 'fastify' {
 }
 
 const uploadDir = path.resolve(process.cwd(), config.UPLOAD_DIR);
+const publicAssetsDir = path.resolve(process.cwd(), 'public');
 const frontendDir = path.resolve(process.cwd(), '../frontend/dist/sindis-frontend/browser');
 const publicUrl = new URL(config.PUBLIC_BASE_URL);
 const publicFrontendOrigin = `${publicUrl.protocol}//${publicUrl.hostname}:4200`;
@@ -74,6 +75,7 @@ await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
 await app.register(jwt, { secret: config.JWT_SECRET });
 await app.register(multipart, { limits: { fileSize: 8 * 1024 * 1024, files: 1 } });
 await app.register(fastifyStatic, { root: uploadDir, prefix: '/uploads/' });
+await app.register(fastifyStatic, { root: publicAssetsDir, prefix: '/assets/', decorateReply: false });
 
 app.decorate('authenticate', async (request: FastifyRequest, reply: FastifyReply) => {
   try {
@@ -92,7 +94,7 @@ app.setErrorHandler((error, _request, reply) => {
   return reply.code(500).send({ message: 'Error interno' });
 });
 
-app.get('/health', async () => ({ ok: true, app: 'Servicios Medicos DIF Estatal', module: 'Programa Integral de Discapacidad', time: new Date().toISOString() }));
+app.get('/health', async () => ({ ok: true, app: 'Servicios Medicos DIF Estatal', module: 'El Gigante Incluyente', time: new Date().toISOString() }));
 
 await app.register(authRoutes, { prefix: '/api' });
 await app.register(appointmentRoutes, { prefix: '/api' });

@@ -78,6 +78,7 @@ model Beneficiary {
   works              Boolean   @default(false)
   headOfFamily       Boolean   @default(false)
   photoPath          String?
+  signatureData      String?   @db.Text
   emergencyTokenHash String    @unique
   emergencyTokenLast4 String
   active             Boolean   @default(true)

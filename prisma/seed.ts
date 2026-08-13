@@ -97,10 +97,12 @@ async function main() {
     }
   }
 
-  const previousProgramService = await prisma.medicalService.findUnique({ where: { name: 'SINDIS' } });
+  const previousProgramService = await prisma.medicalService.findFirst({
+    where: { name: { in: ['SINDIS', 'Programa Integral de Discapacidad'] } }
+  });
   if (previousProgramService) {
     const currentProgramService = await prisma.medicalService.findUnique({
-      where: { name: 'Programa Integral de Discapacidad' }
+      where: { name: 'El Gigante Incluyente' }
     });
 
     if (currentProgramService) {
@@ -115,8 +117,8 @@ async function main() {
       await prisma.medicalService.update({
         where: { id: previousProgramService.id },
         data: {
-          name: 'Programa Integral de Discapacidad',
-          description: 'Discapacidad, integracion social, QR y gafete.',
+          name: 'El Gigante Incluyente',
+          description: 'Identificacion, inclusion social, QR y gafete.',
           active: true
         }
       });
@@ -128,7 +130,9 @@ async function main() {
     for (const row of serviceRows) {
       const legacyId = numberOrNull(row[1]);
       const importedName = cleanText(row[2]);
-      const name = importedName === 'SINDIS' ? 'Programa Integral de Discapacidad' : importedName;
+      const name = importedName === 'SINDIS' || importedName === 'Programa Integral de Discapacidad'
+        ? 'El Gigante Incluyente'
+        : importedName;
       if (!legacyId || !name) continue;
 
       await prisma.medicalService.upsert({
@@ -172,7 +176,7 @@ async function main() {
       ['Terapia fisica', 'Sesiones de terapia fisica y funcional.'],
       ['Psicologia', 'Atencion psicologica y valoracion emocional.'],
       ['Trabajo social', 'Valoracion social, estudio socioeconomico y apoyos.'],
-      ['Programa Integral de Discapacidad', 'Discapacidad, integracion social, QR y gafete.']
+      ['El Gigante Incluyente', 'Identificacion, inclusion social, QR y gafete.']
     ] as const) {
       await prisma.medicalService.upsert({
         where: { name },

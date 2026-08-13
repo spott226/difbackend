@@ -150,7 +150,7 @@ export async function emergencyPdf(beneficiary: any) {
   content.push('q 0.83 0.08 0.53 rg 0 690 612 9 re f Q');
   content.push('q 0 0.68 0.94 rg 360 690 252 9 re f Q');
   pdfLine(content, 'DIF Estatal de Aguascalientes', 42, 744, 12, '1 1 1');
-  pdfLine(content, 'Programa Integral de Discapacidad', 42, 714, 22, '1 1 1');
+  pdfLine(content, 'El Gigante Incluyente', 42, 714, 22, '1 1 1');
   pdfLine(content, 'Nuestra tecnología es diferente', 380, 714, 12, '1 0.82 0');
 
   if (photo) {
@@ -281,7 +281,7 @@ export async function badgeDataPdf(beneficiary: any) {
   }
 
   pdfLine(content, name, 208, 600, 22, '0.16 0.08 0.55');
-  pdfLine(content, 'Programa Integral de Discapacidad', 208, 575, 12, '0.83 0.08 0.53');
+  pdfLine(content, 'El Gigante Incluyente', 208, 575, 12, '0.83 0.08 0.53');
   pdfLine(content, `ID Soluciones: ${beneficiary.solucionesId}`, 208, 540, 12);
   pdfLine(content, `Grupo sanguineo: ${clinical?.bloodType || 'Sin registrar'}`, 208, 516, 12);
   pdfLine(content, `Discapacidad: ${disability?.disabilityType || 'Sin registrar'}`, 208, 492, 12);
@@ -468,7 +468,7 @@ export async function emergencyRoutes(app: FastifyInstance) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Programa Integral de Discapacidad - DIF Estatal</title>
+  <title>El Gigante Incluyente - DIF Estatal</title>
   <style>
     :root { --brand:#d41487; --blue:#28158c; --cyan:#00aeef; --lime:#bed600; --yellow:#ffd200; --ink:#161b2f; --muted:#5f6878; --line:#dfe6ee; }
     * { box-sizing: border-box; }
