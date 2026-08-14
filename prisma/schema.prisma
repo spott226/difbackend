@@ -61,6 +61,7 @@ model User {
   role         Role     @default(CAPTURISTA)
   modules      String[] @default([])
   active       Boolean  @default(true)
+  tokenVersion Int      @default(0)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   auditLogs    AuditLog[]
@@ -90,6 +91,7 @@ model Beneficiary {
   signatureData      String?   @db.Text
   emergencyTokenHash String    @unique
   emergencyTokenLast4 String
+  emergencyTokenExpiresAt DateTime?
   active             Boolean   @default(true)
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt

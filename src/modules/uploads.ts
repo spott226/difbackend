@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { config } from '../config.js';
 import { prisma } from '../db.js';
 import { requireAnyModule } from '../security/authorization.js';
+import { signPhotoPath } from '../security/media-url.js';
 
 const paramsSchema = z.object({ id: z.string().uuid() });
 const allowedMime = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -32,7 +33,7 @@ export async function uploadRoutes(app: FastifyInstance) {
       data: { photoPath: `/uploads/${relativePath}` }
     });
 
-    return { photoPath: beneficiary.photoPath };
+    return { photoPath: signPhotoPath(beneficiary.photoPath) };
   });
 
   app.post('/beneficiaries/:id/signature', { preHandler: [app.authenticate, requireAnyModule('sindis')] }, async (request, reply) => {

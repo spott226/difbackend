@@ -1,5 +1,10 @@
 import { inflateRawSync } from 'node:zlib';
 
+const maxEntries = 256;
+const maxUncompressedBytes = 64 * 1024 * 1024;
+const maxRows = 5000;
+const maxColumns = 128;
+
 function xmlDecode(value: string) {
   return value
     .replaceAll('&lt;', '<')
@@ -20,11 +25,13 @@ function zipEntries(buffer: Buffer) {
   if (endOffset < 0) throw new Error('El archivo no es un XLSX válido');
 
   const entryCount = buffer.readUInt16LE(endOffset + 10);
+  if (entryCount > maxEntries) throw new Error('El archivo Excel contiene demasiados elementos');
   let centralOffset = buffer.readUInt32LE(endOffset + 16);
   const entries = new Map<string, Buffer>();
   let totalUncompressedSize = 0;
 
   for (let index = 0; index < entryCount; index += 1) {
+    if (centralOffset < 0 || centralOffset + 46 > buffer.length) throw new Error('Estructura XLSX dañada');
     if (buffer.readUInt32LE(centralOffset) !== 0x02014b50) throw new Error('Estructura XLSX dañada');
     const method = buffer.readUInt16LE(centralOffset + 10);
     const compressedSize = buffer.readUInt32LE(centralOffset + 20);
@@ -35,7 +42,7 @@ function zipEntries(buffer: Buffer) {
     const localOffset = buffer.readUInt32LE(centralOffset + 42);
     const name = buffer.subarray(centralOffset + 46, centralOffset + 46 + nameLength).toString('utf8');
     totalUncompressedSize += uncompressedSize;
-    if (totalUncompressedSize > 64 * 1024 * 1024) {
+    if (totalUncompressedSize > maxUncompressedBytes) {
       throw new Error('El archivo Excel es demasiado grande para importarse');
     }
 
@@ -43,8 +50,17 @@ function zipEntries(buffer: Buffer) {
     const localNameLength = buffer.readUInt16LE(localOffset + 26);
     const localExtraLength = buffer.readUInt16LE(localOffset + 28);
     const dataStart = localOffset + 30 + localNameLength + localExtraLength;
+    if (dataStart < 0 || dataStart + compressedSize > buffer.length) throw new Error('Entrada XLSX dañada');
     const compressed = buffer.subarray(dataStart, dataStart + compressedSize);
-    const data = method === 0 ? compressed : method === 8 ? inflateRawSync(compressed) : null;
+    const remainingBytes = maxUncompressedBytes - [...entries.values()].reduce((total, entry) => total + entry.length, 0);
+    const data = method === 0
+      ? compressed
+      : method === 8
+        ? inflateRawSync(compressed, { maxOutputLength: remainingBytes + 1 })
+        : null;
+    if (data && (data.length !== uncompressedSize || data.length > remainingBytes)) {
+      throw new Error('El archivo Excel contiene datos comprimidos inválidos');
+    }
     if (data) entries.set(name.replaceAll('\\', '/'), data);
 
     centralOffset += 46 + nameLength + extraLength + commentLength;
@@ -62,7 +78,9 @@ function columnIndex(reference: string) {
   const letters = reference.match(/[A-Z]+/i)?.[0]?.toUpperCase() ?? 'A';
   let result = 0;
   for (const letter of letters) result = result * 26 + letter.charCodeAt(0) - 64;
-  return result - 1;
+  const index = result - 1;
+  if (index < 0 || index >= maxColumns) throw new Error('El archivo Excel contiene demasiadas columnas');
+  return index;
 }
 
 export function readFirstWorksheet(buffer: Buffer) {
@@ -78,6 +96,7 @@ export function readFirstWorksheet(buffer: Buffer) {
   const sheetXml = entries.get(sheetEntry)!.toString('utf8');
   const rows: string[][] = [];
   for (const rowMatch of sheetXml.matchAll(/<(?:\w+:)?row(?:\s[^>]*)?>([\s\S]*?)<\/(?:\w+:)?row>/g)) {
+    if (rows.length >= maxRows) throw new Error('El archivo Excel contiene demasiadas filas');
     const row: string[] = [];
     for (const cellMatch of rowMatch[1].matchAll(/<(?:\w+:)?c\s([^>]*)>([\s\S]*?)<\/(?:\w+:)?c>|<(?:\w+:)?c\s([^>]*)\/>/g)) {
       const attributes = cellMatch[1] || cellMatch[3] || '';

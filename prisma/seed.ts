@@ -63,16 +63,24 @@ function readTsv(fileName: string) {
 }
 
 async function main() {
-  await prisma.user.upsert({
-    where: { username: 'superadmin' },
-    update: {},
-    create: {
-      username: 'superadmin',
-      displayName: 'Administrador Servicios Medicos DIF Estatal',
-      passwordHash: await hashPassword('Cambiar123!'),
-      role: Role.SUPER_ADMIN
-    }
+  const existingSuperAdmin = await prisma.user.findFirst({
+    where: { role: Role.SUPER_ADMIN, active: true },
+    select: { id: true }
   });
+  if (!existingSuperAdmin) {
+    const bootstrapPassword = process.env.BOOTSTRAP_ADMIN_PASSWORD;
+    if (!bootstrapPassword || bootstrapPassword.length < 16) {
+      throw new Error('No existe un superadministrador activo. Configure BOOTSTRAP_ADMIN_PASSWORD con al menos 16 caracteres para crear uno de forma segura.');
+    }
+    await prisma.user.create({
+      data: {
+        username: process.env.BOOTSTRAP_ADMIN_USERNAME?.trim().toLowerCase() || 'superadmin',
+        displayName: 'Administrador Servicios Medicos DIF Estatal',
+        passwordHash: await hashPassword(bootstrapPassword),
+        role: Role.SUPER_ADMIN
+      }
+    });
+  }
 
   for (const [rawName, rawLocalities] of municipalities) {
     const name = cleanText(rawName) || rawName;

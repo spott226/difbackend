@@ -9,6 +9,7 @@ import { createEmergencyToken, hashEmergencyToken } from '../security/token.js';
 import { badgeDataPdf } from './emergency.js';
 import { createXlsx, XlsxColumn } from '../export/xlsx.js';
 import { readFirstWorksheet } from '../export/xlsx-reader.js';
+import { signPhotoPath } from '../security/media-url.js';
 
 const emptyToNull = (value: unknown) => value === '' ? null : value;
 const optionalText = z.preprocess(emptyToNull, z.string().optional().nullable());
@@ -201,6 +202,14 @@ function nextSnsId(count: number) {
   return `SNS-${new Date().getFullYear()}-${String(count + 1).padStart(6, '0')}`;
 }
 
+function emergencyTokenExpiry() {
+  return new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+}
+
+function presentBeneficiary<T extends { photoPath?: string | null }>(beneficiary: T) {
+  return { ...beneficiary, photoPath: signPhotoPath(beneficiary.photoPath) };
+}
+
 function isLocalHost(hostname: string) {
   return ['localhost', '127.0.0.1', '::1'].includes(hostname);
 }
@@ -275,25 +284,45 @@ function qrNetworkWarning(emergencyUrl: string) {
 export async function beneficiaryRoutes(app: FastifyInstance) {
   app.get('/beneficiaries', { preHandler: [app.authenticate, requireAnyModule('sindis', 'agenda')] }, async (request) => {
     const q = z.object({ search: z.string().optional() }).parse(request.query).search;
-    return prisma.beneficiary.findMany({
+    const where = {
+      active: true,
+      ...(q
+        ? {
+            OR: [
+              { curp: { contains: q.toUpperCase() } },
+              { snsId: { contains: q.toUpperCase() } },
+              { solucionesId: { contains: q } },
+              { firstName: { contains: q, mode: 'insensitive' as const } },
+              { paternalLastName: { contains: q, mode: 'insensitive' as const } }
+            ]
+          }
+        : {})
+    };
+    const canViewClinicalData = request.authUser?.role === 'SUPER_ADMIN' || request.authUser?.modules.includes('sindis');
+    if (!canViewClinicalData) {
+      return prisma.beneficiary.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: 1000,
+        select: {
+          id: true,
+          snsId: true,
+          solucionesId: true,
+          firstName: true,
+          paternalLastName: true,
+          maternalLastName: true
+        }
+      });
+    }
+    const beneficiaries = await prisma.beneficiary.findMany({
       where: {
-        active: true,
-        ...(q
-          ? {
-              OR: [
-                { curp: { contains: q.toUpperCase() } },
-                { snsId: { contains: q.toUpperCase() } },
-                { solucionesId: { contains: q } },
-                { firstName: { contains: q, mode: 'insensitive' } },
-                { paternalLastName: { contains: q, mode: 'insensitive' } }
-              ]
-            }
-          : {})
+        ...where
       },
       orderBy: { createdAt: 'desc' },
       take: 1000,
       include: { disabilityProfile: true, clinicalProfile: true, emergencyContacts: { orderBy: { priority: 'asc' } } }
     });
+    return beneficiaries.map(presentBeneficiary);
   });
 
   app.get('/beneficiaries/export/xlsx', { preHandler: [app.authenticate, requireAnyModule('sindis')] }, async (_request, reply) => {
@@ -558,6 +587,7 @@ export async function beneficiaryRoutes(app: FastifyInstance) {
               phone: input.phone,
               emergencyTokenHash: hashEmergencyToken(emergencyToken),
               emergencyTokenLast4: emergencyToken.slice(-4),
+              emergencyTokenExpiresAt: emergencyTokenExpiry(),
               address: { create: input.address },
               emergencyContacts: { create: input.emergencyContacts },
               disabilityProfile: { create: input.disabilityProfile },
@@ -609,6 +639,7 @@ export async function beneficiaryRoutes(app: FastifyInstance) {
         headOfFamily: input.headOfFamily,
         emergencyTokenHash: hashEmergencyToken(emergencyToken),
         emergencyTokenLast4: emergencyToken.slice(-4),
+        emergencyTokenExpiresAt: emergencyTokenExpiry(),
         address: { create: input.address },
         emergencyContacts: { create: input.emergencyContacts },
         disabilityProfile: { create: input.disabilityProfile },
@@ -624,7 +655,7 @@ export async function beneficiaryRoutes(app: FastifyInstance) {
     const emergencyUrl = `${publicBaseUrl(request)}/public/emergency/${emergencyToken}`;
     const qrDataUrl = await QRCode.toDataURL(emergencyUrl, { margin: 1, width: 320 });
 
-    return reply.code(201).send({ beneficiary, emergencyUrl, qrDataUrl, qrWarning: qrNetworkWarning(emergencyUrl) });
+    return reply.code(201).send({ beneficiary: presentBeneficiary(beneficiary), emergencyUrl, qrDataUrl, qrWarning: qrNetworkWarning(emergencyUrl) });
   });
 
   app.get('/beneficiaries/:id', { preHandler: [app.authenticate, requireAnyModule('sindis')] }, async (request, reply) => {
@@ -635,7 +666,7 @@ export async function beneficiaryRoutes(app: FastifyInstance) {
     });
 
     if (!beneficiary) return reply.code(404).send({ message: 'Beneficiario no encontrado' });
-    return beneficiary;
+    return presentBeneficiary(beneficiary);
   });
 
   app.get('/beneficiaries/:id/pdf', { preHandler: [app.authenticate, requireAnyModule('sindis')] }, async (request, reply) => {
@@ -698,7 +729,7 @@ export async function beneficiaryRoutes(app: FastifyInstance) {
       include: beneficiaryInclude
     });
 
-    return { beneficiary };
+    return { beneficiary: presentBeneficiary(beneficiary) };
   });
 
   app.delete('/beneficiaries/:id', { preHandler: [app.authenticate, requireAnyModule('sindis')] }, async (request, reply) => {
@@ -724,7 +755,8 @@ export async function beneficiaryRoutes(app: FastifyInstance) {
       where: { id },
       data: {
         emergencyTokenHash: hashEmergencyToken(emergencyToken),
-        emergencyTokenLast4: emergencyToken.slice(-4)
+        emergencyTokenLast4: emergencyToken.slice(-4),
+        emergencyTokenExpiresAt: emergencyTokenExpiry()
       }
     });
 

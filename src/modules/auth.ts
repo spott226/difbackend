@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { prisma } from '../db.js';
 import { verifyPassword } from '../security/password.js';
 
+const dummyPasswordHash = '$2a$12$M6pE4Mw8r7iY0fN8K8sK5uUlKdfQZ0OM8i3E6VQPRHeXxq8XnjD9q';
+
 const loginSchema = z.object({
   username: z.string().min(3).transform((value) => value.trim().toLowerCase()),
   password: z.string().min(8),
@@ -21,7 +23,8 @@ export async function authRoutes(app: FastifyInstance) {
     const input = loginSchema.parse(request.body);
     const user = await prisma.user.findUnique({ where: { username: input.username } });
 
-    if (!user || !user.active || !(await verifyPassword(input.password, user.passwordHash))) {
+    const validPassword = await verifyPassword(input.password, user?.passwordHash || dummyPasswordHash);
+    if (!user || !user.active || !validPassword) {
       return reply.code(401).send({ message: 'Usuario o contraseña incorrectos' });
     }
 
@@ -29,7 +32,8 @@ export async function authRoutes(app: FastifyInstance) {
       sub: user.id,
       username: user.username,
       role: user.role,
-      modules: user.modules
+      modules: user.modules,
+      tokenVersion: user.tokenVersion
     }, {
       expiresIn: input.remember ? '7d' : '2h'
     });

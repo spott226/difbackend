@@ -50,12 +50,11 @@ const userSelect = {
 } as const;
 
 function requesterId(request: FastifyRequest) {
-  return String((request.user as { sub?: string }).sub || '');
+  return request.authUser?.id || '';
 }
 
 async function requireSuperAdmin(request: FastifyRequest, reply: FastifyReply) {
-  const user = await prisma.user.findUnique({ where: { id: requesterId(request) } });
-  if (!user || !user.active || user.role !== Role.SUPER_ADMIN) {
+  if (request.authUser?.role !== Role.SUPER_ADMIN) {
     return reply.code(403).send({ message: 'Se requiere acceso de superadministrador' });
   }
 }
@@ -119,8 +118,8 @@ export async function userRoutes(app: FastifyInstance) {
       return reply.code(400).send({ message: 'Debe permanecer al menos un superadministrador activo' });
     }
 
-    const passwordData = input.password
-      ? { passwordHash: await hashPassword(input.password) }
+    const sessionData = input.password
+      ? { passwordHash: await hashPassword(input.password), tokenVersion: { increment: 1 } }
       : {};
 
     return prisma.user.update({
@@ -136,7 +135,7 @@ export async function userRoutes(app: FastifyInstance) {
         role: input.role,
         modules: input.modules,
         active: input.active,
-        ...passwordData
+        ...sessionData
       },
       select: userSelect
     });
@@ -155,7 +154,7 @@ export async function userRoutes(app: FastifyInstance) {
 
     return prisma.user.update({
       where: { id: params.id },
-      data: { active: false },
+      data: { active: false, tokenVersion: { increment: 1 } },
       select: userSelect
     });
   });

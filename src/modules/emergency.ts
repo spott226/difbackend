@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { prisma } from '../db.js';
 import { config } from '../config.js';
 import { hashEmergencyToken } from '../security/token.js';
+import { signPhotoPath } from '../security/media-url.js';
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const giganteBannerPaths = [
@@ -142,7 +143,6 @@ export async function emergencyPdf(beneficiary: any) {
   const clinical = beneficiary.clinicalProfile;
   const disability = beneficiary.disabilityProfile;
   const contacts = beneficiary.emergencyContacts;
-  const medicalService = clinical?.healthCoverage || clinical?.medicalService || clinical?.medicalServiceOther || 'Sin registrar';
 
   const content: string[] = [];
   content.push('q 0.95 0.99 1 rg 0 0 612 792 re f Q');
@@ -163,21 +163,17 @@ export async function emergencyPdf(beneficiary: any) {
 
   pdfLine(content, name, 190, 626, 22, '0.16 0.08 0.55');
   pdfLine(content, `ID Soluciones: ${beneficiary.solucionesId}`, 190, 602, 12);
-  pdfLine(content, `CURP: ${beneficiary.curp}`, 190, 584, 12);
+  pdfLine(content, 'Información para atención de emergencia', 190, 584, 12);
 
   const fields = [
     ['Teléfono', beneficiary.phone],
-    ['Domicilio', formatAddress(beneficiary.address)],
     ['Grupo sanguíneo', clinical?.bloodType],
     ['Discapacidad', disability?.disabilityType],
-    ['Causa', disability?.cause],
-    ['Grado / nivel funcional', disability?.functionalLevel],
     ['Diagnóstico médico', disability?.medicalDiagnosis],
     ['Medicamentos actuales', clinical?.medications],
     ['Enfermedades crónicas', clinical?.chronicDiseases],
     ['Alergias', clinical?.allergies || 'Ninguna conocida'],
-    ['Emergencias', '911 | 089 | 072'],
-    ['Servicio médico / derechohabiencia', medicalService]
+    ['Emergencias', '911 | 089 | 072']
   ];
 
   let y = 456;
@@ -380,6 +376,11 @@ async function photoSource(request: { headers: Record<string, unknown>; protocol
 }
 
 export async function emergencyRoutes(app: FastifyInstance) {
+  const privateResponse = (reply: any) => reply
+    .header('cache-control', 'no-store, private')
+    .header('pragma', 'no-cache')
+    .header('referrer-policy', 'no-referrer');
+
   app.get('/public/assets/gigante-incluyente-banner.png', async (_request, reply) => {
     const image = await giganteBannerImage();
     return reply
@@ -393,21 +394,19 @@ export async function emergencyRoutes(app: FastifyInstance) {
     const beneficiary = await prisma.beneficiary.findUnique({
       where: { emergencyTokenHash: hashEmergencyToken(token) },
       include: {
-        address: true,
         emergencyContacts: { orderBy: { priority: 'asc' } },
         disabilityProfile: true,
-        clinicalProfile: true,
-        supports: true
+        clinicalProfile: true
       }
     });
 
-    if (!beneficiary || !beneficiary.active) {
+    if (!beneficiary || !beneficiary.active || !beneficiary.emergencyTokenExpiresAt || beneficiary.emergencyTokenExpiresAt <= new Date()) {
       return reply.code(404).send({ message: 'QR no encontrado o desactivado' });
     }
 
     const pdf = await emergencyPdf(beneficiary);
     const fileName = `qr-emergencia-${beneficiary.solucionesId}.pdf`;
-    return reply
+    return privateResponse(reply)
       .header('content-type', 'application/pdf')
       .header('content-disposition', `attachment; filename="${fileName}"`)
       .send(pdf);
@@ -418,33 +417,37 @@ export async function emergencyRoutes(app: FastifyInstance) {
     const beneficiary = await prisma.beneficiary.findUnique({
       where: { emergencyTokenHash: hashEmergencyToken(token) },
       include: {
-        address: true,
         emergencyContacts: { orderBy: { priority: 'asc' } },
         disabilityProfile: true,
-        clinicalProfile: true,
-        supports: true
+        clinicalProfile: true
       }
     });
 
-    if (!beneficiary || !beneficiary.active) {
+    if (!beneficiary || !beneficiary.active || !beneficiary.emergencyTokenExpiresAt || beneficiary.emergencyTokenExpiresAt <= new Date()) {
       return reply.code(404).send({ message: 'QR no encontrado o desactivado' });
     }
 
     if ((request.query as { format?: string })?.format === 'json') {
-      return {
+      return privateResponse(reply).send({
         solucionesId: beneficiary.solucionesId,
-        curp: beneficiary.curp,
         name: `${beneficiary.firstName} ${beneficiary.paternalLastName} ${beneficiary.maternalLastName ?? ''}`.trim(),
         phone: beneficiary.phone,
-        photoPath: beneficiary.photoPath,
-        address: beneficiary.address,
-        disability: beneficiary.disabilityProfile,
-        clinical: beneficiary.clinicalProfile,
-        emergencyContacts: beneficiary.emergencyContacts,
+        photoPath: signPhotoPath(beneficiary.photoPath),
+        disability: beneficiary.disabilityProfile ? {
+          disabilityType: beneficiary.disabilityProfile.disabilityType,
+          medicalDiagnosis: beneficiary.disabilityProfile.medicalDiagnosis
+        } : null,
+        clinical: beneficiary.clinicalProfile ? {
+          bloodType: beneficiary.clinicalProfile.bloodType,
+          allergies: beneficiary.clinicalProfile.allergies,
+          medications: beneficiary.clinicalProfile.medications,
+          chronicDiseases: beneficiary.clinicalProfile.chronicDiseases,
+          emergencyNotes: beneficiary.clinicalProfile.emergencyNotes
+        } : null,
+        emergencyContacts: beneficiary.emergencyContacts.map(({ name, relationship, phone, priority }) => ({ name, relationship, phone, priority })),
         emergencyNumbers: ['911', '089 denuncia anonima', '072 atencion ciudadana'],
-        supports: beneficiary.supports,
         updatedAt: beneficiary.updatedAt
-      };
+      });
     }
 
     const name = `${beneficiary.firstName} ${beneficiary.paternalLastName} ${beneficiary.maternalLastName ?? ''}`.trim();
@@ -456,14 +459,9 @@ export async function emergencyRoutes(app: FastifyInstance) {
           )
           .join('')
       : field('Contactos de emergencia', 'Sin registrar');
-    const medicalService =
-      beneficiary.clinicalProfile?.healthCoverage ||
-      beneficiary.clinicalProfile?.medicalService ||
-      beneficiary.clinicalProfile?.medicalServiceOther ||
-      'Sin registrar';
     const giganteBannerUrl = `data:image/png;base64,${(await giganteBannerImage()).toString('base64')}`;
 
-    return reply.type('text/html; charset=utf-8').send(`<!doctype html>
+    return privateResponse(reply).type('text/html; charset=utf-8').send(`<!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
@@ -685,7 +683,7 @@ export async function emergencyRoutes(app: FastifyInstance) {
           <div class="name-card">
             <h2>${escapeHtml(name)}</h2>
             <p>ID Soluciones: ${escapeHtml(beneficiary.solucionesId)}</p>
-            <p>CURP: ${escapeHtml(beneficiary.curp)}</p>
+            <p>Información para atención de emergencia</p>
           </div>
         </section>
 
@@ -693,14 +691,10 @@ export async function emergencyRoutes(app: FastifyInstance) {
           <h3 class="section-title">Datos críticos</h3>
           <div class="grid">
             ${field('Teléfono', beneficiary.phone)}
-            ${field('Domicilio', formatAddress(beneficiary.address))}
             ${field('Grupo sanguíneo', beneficiary.clinicalProfile?.bloodType)}
             ${field('Discapacidad', beneficiary.disabilityProfile?.disabilityType)}
-            ${field('Causa', beneficiary.disabilityProfile?.cause)}
-            ${field('Grado / nivel funcional', beneficiary.disabilityProfile?.functionalLevel)}
             ${field('Alergias', beneficiary.clinicalProfile?.allergies || 'Ninguna conocida')}
             ${field('Emergencias', '911 | 089 | 072')}
-            ${field('Servicio médico / derechohabiencia', medicalService)}
           </div>
         </section>
 
@@ -710,7 +704,6 @@ export async function emergencyRoutes(app: FastifyInstance) {
             <div class="field wide"><span>Diagnóstico médico específico</span><strong>${escapeHtml(beneficiary.disabilityProfile?.medicalDiagnosis || 'Sin registrar')}</strong></div>
             <div class="field wide"><span>Medicamentos actuales</span><strong>${escapeHtml(beneficiary.clinicalProfile?.medications || 'Sin registrar')}</strong></div>
             <div class="field wide"><span>Enfermedades crónicas</span><strong>${escapeHtml(beneficiary.clinicalProfile?.chronicDiseases || 'Sin registrar')}</strong></div>
-            <div class="field wide"><span>Observaciones médicas</span><strong>${escapeHtml(beneficiary.disabilityProfile?.doctorNotes || 'Sin observaciones registradas')}</strong></div>
           </div>
         </section>
 
