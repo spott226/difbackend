@@ -16,6 +16,7 @@ import { catalogRoutes } from './modules/catalogs.js';
 import { emergencyRoutes } from './modules/emergency.js';
 import { renapoRoutes } from './modules/renapo.js';
 import { uploadRoutes } from './modules/uploads.js';
+import { userRoutes } from './modules/users.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -97,6 +98,7 @@ app.setErrorHandler((error, _request, reply) => {
 app.get('/health', async () => ({ ok: true, app: 'Servicios Medicos DIF Estatal', module: 'El Gigante Incluyente', time: new Date().toISOString() }));
 
 await app.register(authRoutes, { prefix: '/api' });
+await app.register(userRoutes, { prefix: '/api' });
 await app.register(appointmentRoutes, { prefix: '/api' });
 await app.register(beneficiaryRoutes, { prefix: '/api' });
 await app.register(catalogRoutes, { prefix: '/api' });

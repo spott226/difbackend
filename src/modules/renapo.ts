@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { config } from '../config.js';
+import { requireAnyModule } from '../security/authorization.js';
 
 const curpSchema = z.object({
   curp: z.string().trim().length(18).transform((value) => value.toUpperCase())
@@ -64,7 +65,7 @@ function pick(raw: string, names: string[]) {
 }
 
 export async function renapoRoutes(app: FastifyInstance) {
-  app.get('/renapo/:curp', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/renapo/:curp', { preHandler: [app.authenticate, requireAnyModule('sindis')] }, async (request, reply) => {
     const { curp } = curpSchema.parse(request.params);
     const decoded = decodeCurp(curp);
 

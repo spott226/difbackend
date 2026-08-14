@@ -4,12 +4,13 @@ import path from 'node:path';
 import { z } from 'zod';
 import { config } from '../config.js';
 import { prisma } from '../db.js';
+import { requireAnyModule } from '../security/authorization.js';
 
 const paramsSchema = z.object({ id: z.string().uuid() });
 const allowedMime = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 export async function uploadRoutes(app: FastifyInstance) {
-  app.post('/beneficiaries/:id/photo', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.post('/beneficiaries/:id/photo', { preHandler: [app.authenticate, requireAnyModule('sindis')] }, async (request, reply) => {
     const { id } = paramsSchema.parse(request.params);
     const file = await request.file();
 
@@ -34,7 +35,7 @@ export async function uploadRoutes(app: FastifyInstance) {
     return { photoPath: beneficiary.photoPath };
   });
 
-  app.post('/beneficiaries/:id/signature', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.post('/beneficiaries/:id/signature', { preHandler: [app.authenticate, requireAnyModule('sindis')] }, async (request, reply) => {
     const { id } = paramsSchema.parse(request.params);
     const file = await request.file();
 

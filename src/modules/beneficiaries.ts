@@ -3,6 +3,7 @@ import { z } from 'zod';
 import QRCode from 'qrcode';
 import os from 'node:os';
 import { prisma } from '../db.js';
+import { requireAnyModule } from '../security/authorization.js';
 import { config } from '../config.js';
 import { createEmergencyToken, hashEmergencyToken } from '../security/token.js';
 import { badgeDataPdf } from './emergency.js';
@@ -272,7 +273,7 @@ function qrNetworkWarning(emergencyUrl: string) {
 }
 
 export async function beneficiaryRoutes(app: FastifyInstance) {
-  app.get('/beneficiaries', { preHandler: [app.authenticate] }, async (request) => {
+  app.get('/beneficiaries', { preHandler: [app.authenticate, requireAnyModule('sindis', 'agenda')] }, async (request) => {
     const q = z.object({ search: z.string().optional() }).parse(request.query).search;
     return prisma.beneficiary.findMany({
       where: {
@@ -295,7 +296,7 @@ export async function beneficiaryRoutes(app: FastifyInstance) {
     });
   });
 
-  app.get('/beneficiaries/export/xlsx', { preHandler: [app.authenticate] }, async (_request, reply) => {
+  app.get('/beneficiaries/export/xlsx', { preHandler: [app.authenticate, requireAnyModule('sindis')] }, async (_request, reply) => {
     const beneficiaries = await prisma.beneficiary.findMany({
       orderBy: [{ active: 'desc' }, { paternalLastName: 'asc' }, { firstName: 'asc' }],
       include: beneficiaryInclude
@@ -423,7 +424,7 @@ export async function beneficiaryRoutes(app: FastifyInstance) {
       .send(workbook);
   });
 
-  app.get('/beneficiaries/import/template', { preHandler: [app.authenticate] }, async (_request, reply) => {
+  app.get('/beneficiaries/import/template', { preHandler: [app.authenticate, requireAnyModule('sindis')] }, async (_request, reply) => {
     const columns = importHeaders.map((header) => ({ header, width: header.length > 22 ? 30 : 20 }));
     const template = createXlsx(columns, [], 'Captura');
     return reply
@@ -432,7 +433,7 @@ export async function beneficiaryRoutes(app: FastifyInstance) {
       .send(template);
   });
 
-  app.post('/beneficiaries/import/xlsx', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.post('/beneficiaries/import/xlsx', { preHandler: [app.authenticate, requireAnyModule('sindis')] }, async (request, reply) => {
     const file = await request.file();
     if (!file) return reply.code(400).send({ message: 'Seleccione un archivo Excel' });
     if (!file.filename.toLowerCase().endsWith('.xlsx')) {
@@ -583,7 +584,7 @@ export async function beneficiaryRoutes(app: FastifyInstance) {
     };
   });
 
-  app.post('/beneficiaries', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.post('/beneficiaries', { preHandler: [app.authenticate, requireAnyModule('sindis')] }, async (request, reply) => {
     const input = beneficiarySchema.parse(request.body);
     const emergencyToken = createEmergencyToken();
     const count = await prisma.beneficiary.count();
@@ -626,7 +627,7 @@ export async function beneficiaryRoutes(app: FastifyInstance) {
     return reply.code(201).send({ beneficiary, emergencyUrl, qrDataUrl, qrWarning: qrNetworkWarning(emergencyUrl) });
   });
 
-  app.get('/beneficiaries/:id', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/beneficiaries/:id', { preHandler: [app.authenticate, requireAnyModule('sindis')] }, async (request, reply) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     const beneficiary = await prisma.beneficiary.findUnique({
       where: { id },
@@ -637,7 +638,7 @@ export async function beneficiaryRoutes(app: FastifyInstance) {
     return beneficiary;
   });
 
-  app.get('/beneficiaries/:id/pdf', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/beneficiaries/:id/pdf', { preHandler: [app.authenticate, requireAnyModule('sindis')] }, async (request, reply) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     const beneficiary = await prisma.beneficiary.findUnique({
       where: { id },
@@ -652,7 +653,7 @@ export async function beneficiaryRoutes(app: FastifyInstance) {
       .send(pdf);
   });
 
-  app.put('/beneficiaries/:id', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.put('/beneficiaries/:id', { preHandler: [app.authenticate, requireAnyModule('sindis')] }, async (request, reply) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     const input = beneficiarySchema.parse(request.body);
     const studyData = normalizeStudy(input.socioeconomicStudy);
@@ -700,7 +701,7 @@ export async function beneficiaryRoutes(app: FastifyInstance) {
     return { beneficiary };
   });
 
-  app.delete('/beneficiaries/:id', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.delete('/beneficiaries/:id', { preHandler: [app.authenticate, requireAnyModule('sindis')] }, async (request, reply) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     const beneficiary = await prisma.beneficiary.findUnique({ where: { id } });
 
@@ -716,7 +717,7 @@ export async function beneficiaryRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
-  app.post('/beneficiaries/:id/emergency-token', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.post('/beneficiaries/:id/emergency-token', { preHandler: [app.authenticate, requireAnyModule('sindis')] }, async (request, reply) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     const emergencyToken = createEmergencyToken();
     await prisma.beneficiary.update({

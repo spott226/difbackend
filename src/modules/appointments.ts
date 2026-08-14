@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { prisma } from '../db.js';
+import { requireAnyModule } from '../security/authorization.js';
 
 const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const timeSlot = z.string().regex(/^\d{2}:\d{2}$/);
@@ -83,7 +84,7 @@ function legacyTimeSlots() {
 }
 
 export async function appointmentRoutes(app: FastifyInstance) {
-  app.get('/appointments/catalogs', { preHandler: [app.authenticate] }, async () => {
+  app.get('/appointments/catalogs', { preHandler: [app.authenticate, requireAnyModule('agenda')] }, async () => {
     const [services, doctors] = await Promise.all([
       prisma.medicalService.findMany({ where: { active: true }, orderBy: { name: 'asc' } }),
       prisma.medicalStaff.findMany({
@@ -100,7 +101,7 @@ export async function appointmentRoutes(app: FastifyInstance) {
     };
   });
 
-  app.get('/appointments', { preHandler: [app.authenticate] }, async (request) => {
+  app.get('/appointments', { preHandler: [app.authenticate, requireAnyModule('agenda')] }, async (request) => {
     const query = appointmentQuerySchema.parse(request.query);
     return prisma.appointment.findMany({
       where: {
@@ -115,7 +116,7 @@ export async function appointmentRoutes(app: FastifyInstance) {
     });
   });
 
-  app.post('/appointments', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.post('/appointments', { preHandler: [app.authenticate, requireAnyModule('agenda')] }, async (request, reply) => {
     const input = appointmentSchema.parse(request.body);
     const appointmentDate = toUtcDate(input.appointmentDate);
 
@@ -166,7 +167,7 @@ export async function appointmentRoutes(app: FastifyInstance) {
     return reply.code(201).send(appointment);
   });
 
-  app.patch('/appointments/:id/status', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.patch('/appointments/:id/status', { preHandler: [app.authenticate, requireAnyModule('agenda')] }, async (request, reply) => {
     const params = z.object({ id: z.string().uuid() }).parse(request.params);
     const input = statusSchema.parse(request.body);
 

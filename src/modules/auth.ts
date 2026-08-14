@@ -28,7 +28,8 @@ export async function authRoutes(app: FastifyInstance) {
     const token = await reply.jwtSign({
       sub: user.id,
       username: user.username,
-      role: user.role
+      role: user.role,
+      modules: user.modules
     }, {
       expiresIn: input.remember ? '7d' : '2h'
     });
@@ -39,12 +40,19 @@ export async function authRoutes(app: FastifyInstance) {
         id: user.id,
         username: user.username,
         displayName: user.displayName,
-        role: user.role
+        role: user.role,
+        modules: user.modules
       }
     };
   });
 
-  app.get('/auth/me', { preHandler: [app.authenticate] }, async (request) => {
-    return request.user;
+  app.get('/auth/me', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const userId = String((request.user as { sub?: string }).sub || '');
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, username: true, displayName: true, role: true, modules: true, active: true }
+    });
+    if (!user?.active) return reply.code(401).send({ message: 'La cuenta ya no está activa' });
+    return user;
   });
 }
