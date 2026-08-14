@@ -13,9 +13,16 @@ const moduleIdSchema = z.enum([
   'reportes'
 ]);
 
+const optionalText = (max: number) => z.string().trim().max(max).optional().transform((value) => value || null);
+
 const createUserSchema = z.object({
   username: z.string().trim().min(3).max(50).transform((value) => value.toLowerCase()),
   displayName: z.string().trim().min(3).max(120),
+  employeeNumber: optionalText(50),
+  area: optionalText(100),
+  jobTitle: optionalText(100),
+  email: z.union([z.string().trim().email(), z.literal('')]).optional().transform((value) => value || null),
+  phone: optionalText(30),
   password: z.string().min(8).max(128),
   role: z.nativeEnum(Role).default(Role.CAPTURISTA),
   modules: z.array(moduleIdSchema).default([]),
@@ -30,6 +37,11 @@ const userSelect = {
   id: true,
   username: true,
   displayName: true,
+  employeeNumber: true,
+  area: true,
+  jobTitle: true,
+  email: true,
+  phone: true,
   role: true,
   modules: true,
   active: true,
@@ -78,6 +90,11 @@ export async function userRoutes(app: FastifyInstance) {
       data: {
         username: input.username,
         displayName: input.displayName,
+        employeeNumber: input.employeeNumber,
+        area: input.area,
+        jobTitle: input.jobTitle,
+        email: input.email,
+        phone: input.phone,
         passwordHash: await hashPassword(input.password),
         role: input.role,
         modules: input.modules,
@@ -111,6 +128,11 @@ export async function userRoutes(app: FastifyInstance) {
       data: {
         username: input.username,
         displayName: input.displayName,
+        employeeNumber: input.employeeNumber,
+        area: input.area,
+        jobTitle: input.jobTitle,
+        email: input.email,
+        phone: input.phone,
         role: input.role,
         modules: input.modules,
         active: input.active,
@@ -136,5 +158,47 @@ export async function userRoutes(app: FastifyInstance) {
       data: { active: false },
       select: userSelect
     });
+  });
+
+  app.get('/admin/reports/summary', adminOnly, async () => {
+    const [
+      totalUsers,
+      activeUsers,
+      usersByRole,
+      usersByArea,
+      totalBeneficiaries,
+      activeBeneficiaries,
+      totalAppointments,
+      appointmentsByStatus
+    ] = await Promise.all([
+      prisma.user.count(),
+      prisma.user.count({ where: { active: true } }),
+      prisma.user.groupBy({ by: ['role'], _count: { _all: true }, orderBy: { role: 'asc' } }),
+      prisma.user.groupBy({ by: ['area'], _count: { _all: true }, orderBy: { area: 'asc' } }),
+      prisma.beneficiary.count(),
+      prisma.beneficiary.count({ where: { active: true } }),
+      prisma.appointment.count(),
+      prisma.appointment.groupBy({ by: ['status'], _count: { _all: true }, orderBy: { status: 'asc' } })
+    ]);
+
+    return {
+      generatedAt: new Date().toISOString(),
+      users: {
+        total: totalUsers,
+        active: activeUsers,
+        inactive: totalUsers - activeUsers,
+        byRole: usersByRole.map((item) => ({ label: item.role, count: item._count._all })),
+        byArea: usersByArea.map((item) => ({ label: item.area || 'Sin área', count: item._count._all }))
+      },
+      beneficiaries: {
+        total: totalBeneficiaries,
+        active: activeBeneficiaries,
+        inactive: totalBeneficiaries - activeBeneficiaries
+      },
+      appointments: {
+        total: totalAppointments,
+        byStatus: appointmentsByStatus.map((item) => ({ label: item.status, count: item._count._all }))
+      }
+    };
   });
 }
