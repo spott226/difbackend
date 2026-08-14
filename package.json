@@ -2,6 +2,8 @@
   "name": "sindis-backend",
   "version": "0.1.0",
   "private": true,
+  "author": "Christopher Leniel Montoya Salmon",
+  "license": "UNLICENSED",
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
