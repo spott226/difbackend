@@ -47,12 +47,28 @@
   function waitForImages(root) {
     var images = Array.prototype.slice.call(root.querySelectorAll('img'));
     return Promise.all(images.map(function (img) {
-      if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+      if (img.complete) return Promise.resolve();
       return new Promise(function (resolve) {
-        img.addEventListener('load', resolve, { once: true });
-        img.addEventListener('error', resolve, { once: true });
+        var timeout = window.setTimeout(resolve, 5000);
+        var finish = function () {
+          window.clearTimeout(timeout);
+          resolve();
+        };
+        img.addEventListener('load', finish, { once: true });
+        img.addEventListener('error', finish, { once: true });
       });
     }));
+  }
+
+  function withTimeout(promise, milliseconds, message) {
+    return Promise.race([
+      promise,
+      new Promise(function (_, reject) {
+        window.setTimeout(function () {
+          reject(new Error(message));
+        }, milliseconds);
+      })
+    ]);
   }
 
   async function renderExpediente() {
@@ -66,7 +82,7 @@
     }
 
     var scale = Math.max(2, Math.min(3, window.devicePixelRatio || 1));
-    return window.html2canvas(expediente, {
+    return withTimeout(window.html2canvas(expediente, {
       scale: scale,
       useCORS: true,
       allowTaint: false,
@@ -76,7 +92,7 @@
       scrollY: 0,
       windowWidth: Math.max(document.documentElement.clientWidth, expediente.scrollWidth),
       windowHeight: Math.max(document.documentElement.clientHeight, expediente.scrollHeight)
-    });
+    }), 30000, 'La imagen tardó demasiado en generarse. Intenta nuevamente.');
   }
 
   function downloadBlob(blob, fileName) {
@@ -134,7 +150,15 @@
       pdf.save(safeFileName() + '.pdf');
       setStatus('PDF descargado correctamente.', false);
     } catch (error) {
-      setStatus(error && error.message ? error.message : 'No se pudo descargar el PDF.', true);
+      try {
+        var directPdfUrl = window.location.pathname.replace(/\/$/, '') + '/pdf';
+        var response = await fetch(directPdfUrl, { cache: 'no-store' });
+        if (!response.ok) throw new Error('No se pudo descargar el PDF alterno.');
+        downloadBlob(await response.blob(), safeFileName() + '.pdf');
+        setStatus('PDF descargado correctamente.', false);
+      } catch (_) {
+        setStatus(error && error.message ? error.message : 'No se pudo descargar el PDF.', true);
+      }
     } finally {
       setBusy(false, pdfButton);
     }
